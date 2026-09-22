@@ -1,0 +1,7 @@
+spring:
+  grpc:
+    server:
+      port: ${server.port}
+
+#logging.level:
+#  org.springframework.experimental.boot.server.exec: debug

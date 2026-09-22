@@ -1,0 +1,76 @@
+plugins {
+	id 'java'
+	id 'org.springframework.boot' version '4.1.2-SNAPSHOT'
+	id 'io.spring.dependency-management' version '1.1.7'
+	id 'com.google.protobuf' version '0.9.6'
+	id 'org.jetbrains.kotlin.jvm' version '2.2.21'
+	id 'org.jetbrains.kotlin.plugin.spring' version '2.2.21'
+}
+
+group = 'com.example'
+version = '1.1.2-SNAPSHOT'
+
+def toolchainVersion() {
+	// Highest jvm supported is 24
+	if (project.hasProperty('testToolchain')) {
+		def jvmVersion = project.property('testToolchain').toString().toInteger()
+		return jvmVersion == 25 ? 24 : jvmVersion
+	}
+	return 17
+}
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(toolchainVersion())
+	}
+}
+
+repositories {
+	mavenLocal()
+	mavenCentral()
+	maven { url 'https://repo.spring.io/milestone' }
+	maven { url 'https://repo.spring.io/snapshot' }
+}
+
+def springGrpcVersion = project.properties['springGrpcVersion'] ?: '1.1.2-SNAPSHOT'
+
+dependencies {
+
+	implementation 'org.springframework.boot:spring-boot-starter-grpc-server'
+	implementation 'org.springframework.boot:spring-boot-starter-actuator'
+	implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core'
+	implementation("io.grpc:grpc-kotlin-stub")
+	implementation("io.micrometer:context-propagation")
+
+	testImplementation 'org.springframework.boot:spring-boot-starter-grpc-client-test'
+
+	testRuntimeOnly "io.netty:netty-transport-native-epoll::linux-x86_64"
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+test {
+	useJUnitPlatform()
+	testLogging.showStandardStreams = true
+	outputs.upToDateWhen { false }
+}
+
+protobuf {
+	plugins {
+		grpc {
+			artifact = "io.grpc:protoc-gen-grpc-java:${dependencyManagement.importedProperties['grpc.version']}"
+		}
+		grpckt {
+			artifact = "io.grpc:protoc-gen-grpc-kotlin:${dependencyManagement.importedProperties['grpc-kotlin.version']}:jdk8@jar"
+		}
+	}
+	generateProtoTasks {
+		all()*.plugins {
+			grpc {
+				option '@generated=omit'
+			}
+			grpckt {
+				outputSubDir = "kotlin"
+			}
+		}
+	}
+}

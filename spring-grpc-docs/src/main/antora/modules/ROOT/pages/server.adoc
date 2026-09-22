@@ -1,0 +1,346 @@
+[[server]]
+= GRPC Server
+
+This section describes core concepts that Spring gRPC uses on the server side. We recommend reading it closely to understand the ideas behind how Spring gRPC is implemented.
+You only need to provide one or more beans of type `BindableService` to create a gRPC server, provided the classpath contains an implementation of a `Server`. The `BindableService` is a gRPC service that can be bound to a server.
+The `Server` is the gRPC server that listens for incoming requests and routes them to the appropriate service implementation.
+
+== Create a gRPC Service
+
+To create a gRPC server, you need to provide a `GrpcServerFactory` one or more beans of type `BindableService`.
+There are some `BindableServices` available off the shelf that you could include in your application (e.g. the <<reflection-service,gRPC Reflection>> or <<health-service,gRPC Health>> services).
+Very commonly, you will create your own `BindableService` by extending the generated service implementation from your Protobuf file.
+The easiest way to activate it is to simply add a Spring `@Service` annotation to the implementation class and have it picked up by the `@ComponentScan` in your Spring Boot application.
+
+[[service-filtering]]
+=== Service Filtering
+All available `BindableService` beans are bound to all running gRPC servers.
+However, you can register a javadoc:org.springframework.grpc.server.ServerServiceDefinitionFilter[] bean to decide which services are bound to which server factories.
+
+The following example prevents the "health" and "reflection" service from being bound to the server created by the server factory that the filter is applied to (e.g. the javadoc:org.springframework.grpc.server.InProcessGrpcServerFactory[]).
+
+[source,java]
+----
+@Bean
+ServerServiceDefinitionFilter myServiceFilter() {
+    return (serviceDefinition, __) ->
+            !Set.of(HealthGrpc.SERVICE_NAME, ServerReflectionGrpc.SERVICE_NAME)
+                    .contains(serviceDefinition.getServiceDescriptor().getName());
+}
+----
+
+The javadoc:org.springframework.grpc.server.InProcessGrpcServerFactory[] picks up the javadoc:org.springframework.grpc.server.ServerServiceDefinitionFilter[] automatically.
+Any other server factory will require you to provide a `GrpcServerFactoryCustomizer` in which you can modify the factory by adding a filter, as shown in the following example:
+
+[source,java]
+----
+@Bean
+GrpcServerFactoryCustomizer myServerFactoryCustomizer(ServerServiceDefinitionFilter myServiceFilter) {
+    return factory -> {
+        if (factory instanceof NettyGrpcServerFactory nettyServerFactory) {
+            nettyServerFactory.setServiceFilter(myServiceFilter);
+        }
+    };
+}
+----
+
+== Netty Server
+
+If you use the `NettyGrpcServerFactory`, the server will be a Netty-based implementation.
+You can configure common features of the server by using a javadoc:org.springframework.grpc.server.ServerBuilderCustomizer[] bean to customize the `ServerBuilder` before it is used to create the server.
+
+=== Shaded Netty
+
+You can switch to a shaded Netty provided by the gRPC team by adding the `grpc-netty-shaded` dependency and creating a `ShadedNettyGrpcServerFactory` bean in your application context.
+
+== Servlet Server
+
+Any servlet container can be used to run a gRPC server.
+
+To run in this mode you must enable HTTP2 on the server by setting the container up using its own infrastructure.
+Spring Boot provides auto-configuration for Tomcat and Jetty, and you can use the usual configuration properties to enable HTTP2.
+The servlet that is created is mapped to process HTTP POST requests to the paths defined by the registered services, as `/<service-name>/*`.
+Clients can connect to the server using that path, which is what any gRPC client library will do.
+
+The gRPC server has fewer configuration options when running in a servlet container, as the servlet container is responsible for the network layer.
+You can still add javadoc:org.springframework.grpc.server.ServerBuilderCustomizer[] beans to customize the server as it is built, but some features common in the "native" builders are not available and may throw exceptions at runtime.
+
+== Native gRPC Server inside a Servlet Container
+The native gRPC server (with netty etc.) will run happily inside a web application, listening on a different port.
+
+[[in-process-server]]
+== InProcess Server
+
+You can run an in-process server (i.e. not listening on a network port) by including the `io.grpc.grpc-inprocess` dependency on your classpath and using the javadoc:org.springframework.grpc.server.InProcessGrpcServerFactory[].
+This is useful for testing, but it can also be used in production if you want to run a gRPC server that is only accessible from within the same application (e.g. for internal communication between different modules of the same application).
+
+In this mode, the in-process server factory is auto-configured in *addition* to the regular server factory (e.g. Netty).
+
+NOTE: To use the inprocess server the channel target must be set to `in-process:<in-process-name>`
+
+
+[[server-interceptor]]
+== Server Interceptors
+
+=== Global
+To add a server interceptor to be applied to all services you can simply register a server interceptor bean and then annotate it with javadoc:org.springframework.grpc.server.GlobalServerInterceptor[format=annotation].
+The interceptors are ordered according to their bean natural ordering (i.e. `@Order`).
+
+[source,java]
+----
+@Bean
+@Order(100)
+@GlobalServerInterceptor
+ServerInterceptor myGlobalLoggingInterceptor() {
+    return new MyLoggingInterceptor();
+}
+----
+
+[[global-server-interceptor-filtering]]
+==== Filtering
+All global interceptors are applied to all created services by default.
+However, you can register a javadoc:org.springframework.grpc.server.service.ServerInterceptorFilter[] bean to decide which interceptors are applied to which server factories.
+
+The following example prevents the `ExtraThingsInterceptor` interceptor from being applied to any servers created by the server factory that the filter is applied to.
+
+[source,java]
+----
+@Bean
+ServerInterceptorFilter myInterceptorFilter() {
+	return (interceptor, service) ->
+			!(interceptor instanceof ExtraThingsInterceptor);
+}
+----
+
+You will need to provide a `GrpcServerFactoryCustomizer` in which you can modify the factory by adding a filter, as shown in the following example:
+
+[source,java]
+----
+@Bean
+GrpcServerFactoryCustomizer myServerFactoryCustomizer() {
+	return factory -> {
+		if (factory instanceof NettyGrpcServerFactory) {
+			((DefaultGrpcServerFactory)factory).setInterceptorFilter(myInterceptorFilter());
+		}
+	};
+}
+----
+
+=== Per-Service
+To add a server interceptor to be applied to a single service you can simply register a server interceptor bean and then annotate your `BindableService` bean with javadoc:org.springframework.grpc.server.service.GrpcService[format=annotation], specifying the interceptor using either the `interceptors` or `interceptorNames` attribute.
+
+The interceptors are ordered according to their position in the attribute list.
+When using both `interceptors` and `interceptorNames`, the former entries precede the latter.
+
+In the following example, the `myServerInterceptor` will be applied to the `myService` service.
+
+[source,java]
+----
+@Bean
+MyServerInterceptor myServerInterceptor() {
+    return new MyServerInterceptor();
+}
+
+@GrpcService(interceptors = MyServerInterceptor.class)
+BindableService myService() {
+	...
+}
+----
+
+[[server-interceptor-blending]]
+[TIP]
+====
+When a service is configured with both global and per-service interceptors, the global interceptors are first applied in their sorted order followed by the per-service interceptors in their sorted order.
+
+However, by setting the `blendWithGlobalInterceptors` attribute on the javadoc:org.springframework.grpc.server.service.GrpcService[format=annotation] annotation to `"true"` you can change this behavior so that the interceptors are all combined and then sorted according to their bean natural ordering (i.e. `@Order`).
+
+You can use this option if you want to add a per-service interceptor between global interceptors.
+====
+
+[[reflection-service]]
+== Reflection
+
+Spring gRPC allows you to create an instance of the standard https://grpc.io/docs/guides/reflection/[gRPC Reflection service] which enables clients to browse the metadata of your services and download the Protobuf files.
+
+IMPORTANT: The reflection service resides in the `io.grpc:grpc-services` library which is marked as `optional` by Spring gRPC. You must add this dependency to your application in order for it to be autoconfigured.
+
+[[health-service]]
+include::health.adoc[leveloffset=+1]
+
+== Observability
+
+Observability features are provided by Micrometer. Spring Boot has some auto-configuration for Micrometer, and Spring gRPC provides some additional auto-configuration to add gRPC-specific metrics.
+
+== Exception Handling
+
+Spring gRPC provides an autoconfigured exception handler that can be used to provide a consistent way to handle exceptions in your gRPC services.
+All you need to do is add `@Beans` of type javadoc:org.springframework.grpc.server.exception.GrpcExceptionHandler[] to your application context, and they will be used to handle exceptions thrown by your services.
+A javadoc:org.springframework.grpc.server.exception.GrpcExceptionHandler[] can be used to handle exceptions of a specific type, returning null for those it does not support, or to handle all exceptions.
+
+== Testing
+
+If you include `spring-grpc-test` in your project, your gRPC server in a `@SpringBootTest` can be started in-process (i.e. not listening on a network port) by enabling the in-process server.
+All clients that connect to any server via the autoconfigured javadoc:org.springframework.grpc.client.GrpcChannelFactory[] will be able to connect to it.
+
+== Security
+
+=== Netty
+
+The netty-based server supports TLS and mTLS out of the box.
+To enable it, you need to add the appropriate `KeyManager` and/or `TrustManager` to the server configuration.
+You can do this by creating a javadoc:org.springframework.grpc.server.ServerBuilderCustomizer[] or in the `@Bean` definition for the `NettyGrpcServerFactory` itself.
+
+==== Declarative Security with Spring Security
+
+If you want to enhance the security of your gRPC server, you can use Spring Security by employing similar mechanisms to those used for regular HTTP security.
+Enable Spring Security as normal, and ensure that there is an `AuthenticationManager` bean in the context.
+Then create a javadoc:org.springframework.grpc.server.security.AuthenticationProcessInterceptor[] bean that uses the `AuthenticationManager` to authenticate requests, and add it as a global server interceptor (see above).
+You can then use `@Preauthorize` on your `BindableService` beans to enforce authorization rules with roles (more precisely authorities in Spring Security terminology).
+
+This pattern will be familiar to anyone who has used Spring Security before.
+Here's an example:
+
+[source,java]
+----
+@Bean
+@GlobalServerInterceptor
+AuthenticationProcessInterceptor jwtSecurityFilterChain(GrpcSecurity grpc) throws Exception {
+	return grpc
+			.authorizeRequests(requests -> requests
+					.methods("Simple/StreamHello").hasAuthority("ROLE_ADMIN")
+					.methods("Simple/SayHello").hasAuthority("ROLE_USER")
+					.methods("grpc.*/*").permitAll()
+					.allRequests().denyAll())
+			.httpBasic(withDefaults())
+			.preauth(withDefaults())
+			.build();
+}
+----
+
+Here we configure a filter that allows access to one method only to admin users, and another to users with the "USER" role;
+access to all gRPC services (e.g. reflection and health indicators) is allowed to all; and all other requests are denied.
+We also enable HTTP Basic authentication and preauthentication (mTLS) (`withDefaults()` is a static import from the `Customizer` in Spring Security).
+
+==== OAuth2 Resource Server
+
+Similar to the way Spring Boot works https://docs.spring.io/spring-boot/reference/web/spring-security.html#web.security.oauth2.server[with normal web applications], if you have the `spring-security-oauth2-resource-server` dependency on the classpath, Spring gRPC will be able to configure an OAuth2 resource server through the javadoc:org.springframework.grpc.server.security.GrpcSecurity[] configurer.
+
+Both token formats are supported, and in either case the token is read from the `Authorization` metadata entry of the gRPC call by the javadoc:org.springframework.grpc.server.security.BearerTokenAuthenticationExtractor[].
+
+For JWTs, use `jwt()` and supply a `JwtDecoder` (or rely on one in the application context, e.g. from the `spring.security.oauth2.resourceserver.jwt.*` properties):
+
+[source,java]
+----
+@Bean
+@GlobalServerInterceptor
+AuthenticationProcessInterceptor jwtSecurityFilterChain(GrpcSecurity grpc) throws Exception {
+	return grpc
+			.authorizeRequests(requests -> requests
+					.methods("Simple/StreamHello").hasAuthority("SCOPE_profile")
+					.methods("grpc.*/*").permitAll()
+					.allRequests().authenticated())
+			.oauth2ResourceServer(resourceServer -> resourceServer.jwt(withDefaults()))
+			.build();
+}
+----
+
+For opaque tokens, use `opaqueToken()` and point it at an introspection endpoint (https://datatracker.ietf.org/doc/html/rfc7662[RFC 7662]).
+The token is validated on each call by an `OpaqueTokenIntrospector`:
+
+[source,java]
+----
+@Bean
+@GlobalServerInterceptor
+AuthenticationProcessInterceptor opaqueTokenSecurityFilterChain(GrpcSecurity grpc) throws Exception {
+	return grpc
+			.authorizeRequests(requests -> requests
+					.methods("grpc.*/*").permitAll()
+					.allRequests().authenticated())
+			.oauth2ResourceServer(resourceServer -> resourceServer
+					.opaqueToken(opaqueToken -> opaqueToken
+							.introspectionUri("https://authserver.example.com/oauth2/introspect")
+							.introspectionClientCredentials("client", "secret")))
+			.build();
+}
+----
+
+Instead of an introspection URI you can supply your own `OpaqueTokenIntrospector` via `introspector()`, or leave the configurer empty and expose one as a bean.
+An `OpaqueTokenAuthenticationConverter` (set with `authenticationConverter()`, or a bean of that type) controls how the introspection response is mapped to an `Authentication`.
+
+NOTE: `jwt()` takes precedence if both are configured, so pick one per interceptor.
+
+==== Custom Credentials
+
+Authentication is extracted from the call by a javadoc:org.springframework.grpc.server.security.GrpcAuthenticationExtractor[], which reads the request `Metadata`, the transport `Attributes` and the `MethodDescriptor` being invoked.
+If your credentials do not arrive in the `Authorization` metadata entry, implement that interface and register it with `authenticationExtractor()`:
+
+[source,java]
+----
+static final Metadata.Key<String> SESSION_KEY = Metadata.Key.of("x-session-token",
+		Metadata.ASCII_STRING_MARSHALLER);
+
+@Bean
+@GlobalServerInterceptor
+AuthenticationProcessInterceptor customSecurityFilterChain(GrpcSecurity grpc) throws Exception {
+	return grpc
+			.authorizeRequests(requests -> requests
+					.methods("grpc.*/*").permitAll()
+					.allRequests().authenticated())
+			.authenticationExtractor((headers, attributes, method) -> {
+				String token = headers.get(SESSION_KEY);
+				return (token != null) ? new BearerTokenAuthenticationToken(token) : null;
+			})
+			.build();
+}
+----
+
+The `AuthenticationManager` still has to be able to authenticate whatever token you return, so pair the extractor with a matching `AuthenticationProvider`.
+
+Extractors are applied in order and the first non-`null` `Authentication` wins, so a custom extractor can coexist with the built-in ones.
+
+=== Servlet
+
+The servlet-based server supports any security configuration that the servlet container supports, including Spring Security.
+This means that you can easily implement your favourite authentication and authorization mechanisms.
+The server will reject unauthenticated requests with a 401 status code and unauthenticated requests with an invalid token with a 403 status code, as with a normal HTTP API.
+It will also send an appropriate `WWW-Authenticate` header, e.g. with the value `Bearer` to indicate that it is expecting a token (for example).
+The gRPC response will also contain a `Status` with the appropriate error code and message.
+For authorization checking, e.g. role-based access control, your `BindableService` beans can be annotated with `@PreAuthorize`.
+
+N.B. if you customize the gRPC server call executors, you will need to ensure that you wrap them in a `DelegatingSecurityContextExecutor` (from Spring Security).
+
+Here's an example with HTTP Basic authentication:
+
+[source,java]
+----
+@Bean
+public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+	return http.httpBasic(Customizer.withDefaults())
+		.authorizeHttpRequests((requests) -> requests.anyRequest().authenticated())
+		.csrf((csrf) -> csrf.disable())
+		.build();
+}
+----
+
+By default, CSRF protection should be disabled for gRPC requests because it is incompatible with the protocol.
+
+==== Securing Individual Methods
+
+Individual gRPC methods can be secured by adding `@PreAuthorize` to the method definition.
+Or you can use the knowledge that the HTTP endpoint is `<service>/<method>` to configure the security using the usual `HttpSecurity` configuration.
+Example:
+
+[source,java]
+----
+@Bean
+public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+	return http.authorizeHttpRequests((requests) -> requests
+		.requestMatchers("/Simple/SayHello").hasRole("USER")
+		.requestMatchers("/Simple/StreamHello").hasRole("ADMIN")
+		.requestMatchers("/grpc.*/*").permitAll()
+		.anyRequest().authenticated())
+		.build();
+}
+----
+
+Here we allow access to the `Simple/SayHello` method to users with the `USER` role, and to the `Simple/StreamHello` method to users with the `ADMIN` role, and allow access to all gRPC-provided services (like reflection and health indicators), while disallowing access to all other methods unless authenticated.

@@ -1,0 +1,42 @@
+package org.springframework.grpc.sample
+
+import org.apache.commons.logging.Log
+import org.apache.commons.logging.LogFactory
+import org.junit.jupiter.api.Assertions
+import org.junit.jupiter.api.Disabled
+import org.junit.jupiter.api.Test
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.grpc.sample.proto.HelloRequest
+import org.springframework.grpc.sample.proto.SimpleGrpc.SimpleBlockingStub
+import org.springframework.test.annotation.DirtiesContext
+
+@SpringBootTest(
+    properties = [
+        "spring.grpc.server.port=0",
+        "spring.grpc.client.channel.default.target=0.0.0.0:\${local.grpc.server.port}"
+    ],
+)
+@DirtiesContext
+class GrpcServerApplicationTests {
+
+    private val log: Log = LogFactory.getLog(this.javaClass)
+
+    @Autowired
+    private lateinit var stub: SimpleBlockingStub
+
+    @Test
+    fun contextLoads() {
+    }
+
+    @Test
+    fun serverResponds() {
+        log.info("Testing")
+        val response = stub.sayHello(
+            HelloRequest.newBuilder()
+                .setName("Alien")
+                .build()
+        )
+        Assertions.assertEquals("Hello ==> Alien", response.getMessage())
+    }
+}

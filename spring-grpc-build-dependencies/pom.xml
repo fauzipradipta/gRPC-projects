@@ -1,0 +1,194 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+
+	<groupId>org.springframework.grpc</groupId>
+	<artifactId>spring-grpc-build-dependencies</artifactId>
+	<version>1.1.2-SNAPSHOT</version>
+	<packaging>pom</packaging>
+
+	<name>Spring gRPC build dependencies</name>
+	<description>Dependencies for the Spring gRPC modules</description>
+
+	<url>https://github.com/spring-projects/spring-grpc</url>
+
+	<scm>
+		<url>https://github.com/spring-projects/spring-grpc</url>
+		<connection>git://github.com/spring-projects/spring-grpc.git</connection>
+		<developerConnection>git@github.com:spring-projects/spring-grpc.git</developerConnection>
+	</scm>
+
+	<distributionManagement>
+		<downloadUrl>https://github.com/spring-projects/spring-grpc</downloadUrl>
+		<site>
+			<id>spring-docs</id>
+			<url>scp://static.springframework.org/var/www/domains/springframework.org/static/htdocs/spring-grpc/docs/${project.artifactId}/${project.version}</url>
+		</site>
+		<repository>
+			<id>central</id>
+			<name>Nexus Release Repository</name>
+			<url>https://central.sonatype.com</url>
+		</repository>
+		<snapshotRepository>
+			<id>repo.spring.io</id>
+			<url>https://repo.spring.io/libs-snapshot-local</url>
+			<releases>
+				<enabled>false</enabled>
+			</releases>
+		</snapshotRepository>
+	</distributionManagement>
+
+	<licenses>
+		<license>
+			<name>Apache 2.0</name>
+			<url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+			<distribution>repo</distribution>
+		</license>
+	</licenses>
+
+	<properties>
+		<grpc.version>1.83.1</grpc.version>
+		<grpc-kotlin.version>1.5.0</grpc-kotlin.version>
+		<jspecify.version>1.0.0</jspecify.version>
+		<protobuf-java.version>4.35.1</protobuf-java.version>
+		<spring-framework.version>7.0.8</spring-framework.version>
+		<spring-security.version>7.1.0</spring-security.version>
+		<micrometer.version>1.17.0</micrometer.version>
+		<netty.version>4.2.16.Final</netty.version>
+		<spring-javaformat-maven-plugin.version>0.0.43</spring-javaformat-maven-plugin.version>
+		<maven-deploy-plugin.version>3.1.4</maven-deploy-plugin.version>
+	</properties>
+
+	<dependencyManagement>
+		<dependencies>
+			<dependency>
+				<groupId>org.springframework.grpc</groupId>
+				<artifactId>spring-grpc-dependencies</artifactId>
+				<version>${project.version}</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+			<dependency>
+				<groupId>org.springframework</groupId>
+				<artifactId>spring-framework-bom</artifactId>
+				<version>${spring-framework.version}</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+			<dependency>
+				<groupId>org.springframework.security</groupId>
+				<artifactId>spring-security-bom</artifactId>
+				<version>${spring-security.version}</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+			<dependency>
+				<groupId>io.netty</groupId>
+				<artifactId>netty-bom</artifactId>
+				<version>${netty.version}</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+			<dependency>
+				<groupId>io.micrometer</groupId>
+				<artifactId>micrometer-bom</artifactId>
+				<version>${micrometer.version}</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+			<dependency>
+				<groupId>org.jspecify</groupId>
+				<artifactId>jspecify</artifactId>
+				<version>${jspecify.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>io.grpc</groupId>
+				<artifactId>grpc-bom</artifactId>
+				<version>${grpc.version}</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+			<dependency>
+				<groupId>io.grpc</groupId>
+				<artifactId>grpc-kotlin-stub</artifactId>
+				<version>${grpc-kotlin.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>com.google.protobuf</groupId>
+				<artifactId>protobuf-bom</artifactId>
+				<version>${protobuf-java.version}</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
+
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-deploy-plugin</artifactId>
+				<version>${maven-deploy-plugin.version}</version>
+			</plugin>
+			<plugin>
+				<groupId>io.spring.javaformat</groupId>
+				<artifactId>spring-javaformat-maven-plugin</artifactId>
+				<version>${spring-javaformat-maven-plugin.version}</version>
+				<executions>
+					<execution>
+						<phase>validate</phase>
+						<configuration>
+							<skip>true</skip>
+						</configuration>
+						<goals>
+							<goal>validate</goal>
+						</goals>
+					</execution>
+				</executions>
+			</plugin>
+		</plugins>
+	</build>
+
+	<profiles>
+		<profile>
+			<id>staging</id>
+			<distributionManagement>
+				<repository>
+					<id>repo.spring.io</id>
+					<url>https://repo.spring.io/libs-staging-local</url>
+					<snapshots>
+						<enabled>false</enabled>
+					</snapshots>
+				</repository>
+			</distributionManagement>
+		</profile>
+		<profile>
+			<id>milestone</id>
+			<distributionManagement>
+				<repository>
+					<id>repo.spring.io</id>
+					<url>https://repo.spring.io/libs-milestone-local</url>
+					<snapshots>
+						<enabled>false</enabled>
+					</snapshots>
+				</repository>
+			</distributionManagement>
+		</profile>
+	</profiles>
+
+	<developers>
+		<developer>
+			<id>dsyer</id>
+			<name>Dave Syer</name>
+			<email>david.syer at broadcom.com</email>
+			<organization>Broadcom</organization>
+			<organizationUrl>http://www.spring.io</organizationUrl>
+			<roles>
+				<role>lead</role>
+			</roles>
+		</developer>
+	</developers>
+
+</project>
