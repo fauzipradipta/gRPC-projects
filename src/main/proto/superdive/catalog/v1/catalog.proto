@@ -1,0 +1,164 @@
+syntax = "proto3";
+
+package superdive.catalog.v1;
+
+option java_package = "com.example.superdive.catalog.v1";
+option java_outer_classname = "CatalogProto";
+option java_multiple_files = true;
+
+// Catalog owns the `product` table. superdive-backend calls this service
+// instead of reading/writing that table directly.
+service CatalogService {
+  // Single product by id. NOT_FOUND if it does not exist.
+  rpc GetProduct (GetProductRequest) returns (Product);
+
+  // Resolves many ids in one round trip. Collapses the per-line lookup
+  // that order building would otherwise do one product at a time.
+  rpc BatchGetProducts (BatchGetProductsRequest) returns (BatchGetProductsResponse);
+
+  // Server-streaming so a large catalog is consumed incrementally
+  // rather than buffered whole on either side.
+  rpc ListProducts (ListProductsRequest) returns (stream Product);
+
+  // Prices a basket server-side. The caller sends ids and quantities only,
+  // so it cannot submit a stale or client-chosen unit price.
+  rpc ResolvePrices (ResolvePricesRequest) returns (ResolvePricesResponse);
+
+  rpc CreateProduct (CreateProductRequest) returns (Product);
+}
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+// Product.price is a java.math.BigDecimal. Never carry it as a proto double --
+// binary floating point cannot represent decimal currency exactly, and the
+// rounding error compounds across order lines and totals.
+//
+// Mirrors google.type.Money so it can be swapped for the canonical type later
+// without a wire change. Declared locally to avoid pulling in googleapis protos.
+message Money {
+  // ISO 4217, e.g. "IDR", "USD".
+  string currency_code = 1;
+
+  // Whole units. -1.75 is units=-1, nanos=-750000000.
+  int64 units = 2;
+
+  // Fractional part in billionths, -999999999..+999999999.
+  // Must carry the same sign as `units` when both are non-zero.
+  int32 nanos = 3;
+}
+
+// Wire values are deliberately 1-based: proto3 requires a zero value, and
+// UNSPECIFIED must occupy it so an unset field is distinguishable.
+//
+// WARNING: these numbers do NOT line up with the database. Product.type has no
+// @Enumerated, so JPA persists it as the Java enum ORDINAL (Retail=0, Course=1,
+// Trip=2, Service=3). Map between this enum and ProductType BY NAME.
+// Mapping by number silently shifts every product one type over.
+enum ProductType {
+  PRODUCT_TYPE_UNSPECIFIED = 0;
+  PRODUCT_TYPE_RETAIL = 1;
+  PRODUCT_TYPE_COURSE = 2;
+  PRODUCT_TYPE_TRIP = 3;
+  PRODUCT_TYPE_SERVICE = 4;
+}
+
+message Product {
+  int64 id = 1;
+  string name = 2;
+  ProductType type = 3;
+  string details = 4;
+  Money price = 5;
+
+  // Mirrors the existing Product.customer @ManyToOne. Optional for field
+  // presence: absent means "not customer-scoped", which a plain int64 0
+  // could not express. See the note in the handover about whether this
+  // association belongs on Product at all.
+  optional int64 customer_id = 6;
+}
+
+// ---------------------------------------------------------------------------
+// GetProduct
+// ---------------------------------------------------------------------------
+
+message GetProductRequest {
+  int64 id = 1;
+}
+
+// ---------------------------------------------------------------------------
+// BatchGetProducts
+// ---------------------------------------------------------------------------
+
+message BatchGetProductsRequest {
+  repeated int64 ids = 1;
+}
+
+message BatchGetProductsResponse {
+  // Order is not guaranteed to match the request. Index by id.
+  repeated Product products = 1;
+
+  // Ids with no matching row. A partial hit is a normal result, not an error,
+  // so the caller can report exactly which lines are bad in one pass.
+  repeated int64 missing_ids = 2;
+}
+
+// ---------------------------------------------------------------------------
+// ListProducts
+// ---------------------------------------------------------------------------
+
+message ListProductsRequest {
+  // Unset or UNSPECIFIED returns every type.
+  ProductType type = 1;
+}
+
+// ---------------------------------------------------------------------------
+// ResolvePrices
+// ---------------------------------------------------------------------------
+
+message ResolvePricesRequest {
+  repeated RequestedLine lines = 1;
+}
+
+message RequestedLine {
+  int64 product_id = 1;
+  int32 qty = 2;
+}
+
+message ResolvePricesResponse {
+  repeated PricedLine lines = 1;
+
+  // Sum of every line subtotal. Computed server-side from the same values
+  // returned above, so the caller never re-derives it.
+  Money total = 2;
+
+  // Requested ids that do not exist. When non-empty, `lines` and `total`
+  // cover only the resolvable lines -- check this before using the total.
+  repeated int64 missing_ids = 3;
+}
+
+message PricedLine {
+  int64 product_id = 1;
+  string name = 2;
+  int32 qty = 3;
+
+  // Catalog's current price, not anything the caller supplied.
+  Money unit_price = 4;
+
+  // unit_price * qty.
+  Money subtotal = 5;
+}
+
+// ---------------------------------------------------------------------------
+// CreateProduct
+// ---------------------------------------------------------------------------
+
+message CreateProductRequest {
+  // INVALID_ARGUMENT if empty, matching ProductService's existing checks
+  // for required name, type and price.
+  string name = 1;
+  ProductType type = 2;
+  string details = 3;
+  Money price = 4;
+  optional int64 customer_id = 5;
+}

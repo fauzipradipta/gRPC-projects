@@ -30,3 +30,26 @@ dependencies {
 tasks.named('test') {
 	useJUnitPlatform()
 }
+
+// The com.google.protobuf plugin runs protoc, but on its own it only emits
+// message classes. The grpc plugin below is what generates CatalogServiceGrpc
+// (the service base class and client stubs). Versions come from Spring Boot's
+// dependency management, so they stay aligned with the gRPC runtime.
+protobuf {
+	protoc {
+		artifact = 'com.google.protobuf:protoc'
+	}
+	plugins {
+		grpc {
+			artifact = 'io.grpc:protoc-gen-grpc-java'
+		}
+	}
+	generateProtoTasks {
+		all()*.plugins {
+			grpc {
+				option 'jakarta_omit'
+				option '@generated=omit'
+			}
+		}
+	}
+}
