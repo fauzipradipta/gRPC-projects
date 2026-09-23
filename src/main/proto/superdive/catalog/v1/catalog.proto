@@ -71,11 +71,13 @@ message Product {
   string details = 4;
   Money price = 5;
 
-  // Mirrors the existing Product.customer @ManyToOne. Optional for field
-  // presence: absent means "not customer-scoped", which a plain int64 0
-  // could not express. See the note in the handover about whether this
-  // association belongs on Product at all.
-  optional int64 customer_id = 6;
+  // Field 6 held customer_id, dropped because a catalog product is something
+  // sold rather than something a customer owns -- the column was NULL on every
+  // row and no code ever set it. Reserving the number and name stops either
+  // being reused for a different meaning, which would silently misread old
+  // messages still carrying the old field.
+  reserved 6;
+  reserved "customer_id";
 }
 
 // ---------------------------------------------------------------------------
@@ -160,5 +162,7 @@ message CreateProductRequest {
   ProductType type = 2;
   string details = 3;
   Money price = 4;
-  optional int64 customer_id = 5;
+
+  reserved 5;
+  reserved "customer_id";
 }
