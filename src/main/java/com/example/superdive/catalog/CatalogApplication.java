@@ -1,13 +1,13 @@
-package com.example.demo;
+package com.example.superdive.catalog;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
-public class DemoApplication {
+public class CatalogApplication {
 
 	public static void main(String[] args) {
-		SpringApplication.run(DemoApplication.class, args);
+		SpringApplication.run(CatalogApplication.class, args);
 	}
 
 }

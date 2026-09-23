@@ -5,7 +5,7 @@ plugins {
 	id 'com.google.protobuf' version '0.9.6'
 }
 
-group = 'com.example'
+group = 'com.example.superdive'
 version = '0.0.1-SNAPSHOT'
 
 java {

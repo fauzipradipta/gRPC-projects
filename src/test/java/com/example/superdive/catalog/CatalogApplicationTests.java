@@ -1,10 +1,10 @@
-package com.example.demo;
+package com.example.superdive.catalog;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
 @SpringBootTest
-class DemoApplicationTests {
+class CatalogApplicationTests {
 
 	@Test
 	void contextLoads() {
